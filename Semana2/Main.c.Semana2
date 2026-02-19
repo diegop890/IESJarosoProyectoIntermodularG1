@@ -1,0 +1,212 @@
+/*
+ * SPDX-FileCopyrightText: 2010-2022 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: CC0-1.0
+ */
+
+
+#include <stdio.h>
+#include <math.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "driver/gpio.h"
+#include "esp_timer.h"
+#include "esp_log.h"
+#include "esp_adc/adc_oneshot.h"
+#include "driver/ledc.h"
+#include "nvs_flash.h"
+#include "esp_wifi.h"
+#include "esp_event.h"
+#include "mqtt_client.h"
+
+
+//Constantes
+#define SIZETAREAS 2048
+static const char* TAG = "MyModule";
+
+//Variables globales
+
+char vectorTopics[10][30] = {{"topic0"}, {"topic1"}}
+
+//Datos propios
+
+typedef struct main
+{
+    int id;
+    int funcion;
+    int ReadWrite;
+    int dato;
+}packetSend_t;
+
+
+//Definición de los pines de entrada y salida
+#define PINSENSV1 33
+#define MASKPINSENSV1 1ULL << PINSENSV1
+
+#define PINSENPUL1 32
+#define MASKPINSENPUL1 1ULL << PINSENPUL1
+
+#define PINSENSPA1 35
+#define MASKPINSENSPA1 1ULL << PINSENSPA1
+
+#define PINSENSC1 34
+#define MASKPINSENSC1 1ULL << PINSENSC1
+
+#define PINSENSH2 39
+#define MASKPINSENSH2 1ULL << PINSENSH2
+
+#define PINSENSH1 36
+#define MASKPINSENSH1 1ULL << PINSENSH1
+
+
+//Definición de los pines de salida
+
+#define PINACTBOM1 23
+#define MASKPINACTBOM1 1ULL << PINACTBOM1
+
+#define PINACTEV2 19
+#define MASKPINACTEV2 1ULL << PINACTEV2
+
+#define PINACTEV1 18
+#define MASKPINACTEV1 1ULL << PINACTEV1
+
+
+//static const char* TAG = "MyModule";
+
+//Declaración de las funciones de las tareas
+//Tareas de los sensores
+void tareaSensorVolumen1( void * pvParameters );
+void tareaPulsador1( void * pvParameters );
+void tareaSensorPresion1( void * pvParameters );
+void tareaSensorCauldal1( void * pvParameters );
+void tareaSensorHumedad2( void * pvParameters );
+void tareaSensorHumedad1( void * pvParameters );
+
+//Tareas de los actuadores
+void tareaBomba1( void * pvParameters );
+void tareaElectrovalvula2( void * pvParameters );
+void tareaElectrovalvula1( void * pvParameters );
+
+//Tareas de las comunicaciones
+void tareaEnvioMQTT1 (void * pvParameters );
+
+
+//handles
+//Handles de las tareas
+TaskHandle_t h_tareaSensorVolumen1;
+TaskHandle_t h_tareaPulsador1;
+TaskHandle_t h_tareaSensorPresion1;
+TaskHandle_t h_tareaSensorCauldal1;
+TaskHandle_t h_tareaSensorHumedad2;
+TaskHandle_t h_tareaSensorHumedad1;
+TaskHandle_t h_tareaBomba1;
+TaskHandle_t h_tareaElectrovalvula2;
+TaskHandle_t h_tareaElectrovalvula1;
+TaskHandle_t h_tareaEnvioMQTT1;
+
+//Handles de las colas
+QueueHandle_t h_colaEnvioMQTT;
+QueueHandle_t h_colaBomba1;
+QueueHandle_t h_colaElectrovalvula1;
+QueueHandle_t h_colaElectrovalvula2;
+
+//Handles de los semáforos
+
+
+
+//Crear los semáforos
+
+
+
+//Crear colas
+h_colaBomba1 = xQueueCreate( 1, sizeof (int));
+sizeof
+
+
+
+//Crear las tareas
+xTaskCreate
+
+
+void app_main(void)
+{
+
+}
+
+
+void tareaSensorVolumen1( void * pvParameters )
+{
+    int dato;
+    // xQueueReceive(h_colaSensorVolumen1, )
+    while(1)
+    {
+
+    }
+}
+void tareaPulsador1( void * pvParameters )
+{
+    while(1)
+    {
+        
+    }
+}
+void tareaSensorPresion1( void * pvParameters )
+{
+    while(1)
+    {
+        
+    }
+}
+void tareaSensorCauldal1( void * pvParameters )
+{
+    while(1)
+    {
+        
+    }
+}
+void tareaSensorHumedad2( void * pvParameters )
+{
+    while(1)
+    {
+        
+    }
+}
+void tareaSensorHumedad1( void * pvParameters )
+{
+    while(1)
+    {
+        
+    }
+}
+void tareaBomba1( void * pvParameters )
+{
+    int dato;
+
+    while(1)
+    {
+        int dato;
+        xQueueReceive(h_colaBomba1, &dato, portMAX_DELAY);
+        ESP_LOGI(TAG, "DATO TAREA BOMBA %d", dato);
+    }
+}
+void tareaElectrovalvula2( void * pvParameters )
+{
+    while(1)
+    {
+        
+    }
+}
+void tareaElectrovalvula1( void * pvParameters )
+{
+    while(1)
+    {
+        
+    }
+}
+void tareaEnvioMQTT1 (void * pvParameters )
+{
+    while(1)
+    {
+        
+    }
+}
