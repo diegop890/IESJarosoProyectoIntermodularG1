@@ -1,0 +1,319 @@
+/*
+ * SPDX-FileCopyrightText: 2010-2022 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: CC0-1.0
+ */
+
+
+#include <stdio.h>
+#include <math.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "driver/gpio.h"
+#include "esp_timer.h"
+#include "esp_log.h"
+#include "esp_adc/adc_oneshot.h"
+#include "driver/ledc.h"
+#include "nvs_flash.h"
+#include "esp_wifi.h"
+#include "esp_event.h"
+#include "mqtt_client.h"
+
+
+//Constantes
+#define SIZETAREAS 2048
+#define SSID "iot2"
+#define PASS "12345678"
+
+//Definición de los pines de entrada y salida
+#define PINSENSV1 33
+#define MASKPINSENSV1 1ULL << PINSENSV1
+
+#define PINSENPUL1 32
+#define MASKPINSENPUL1 1ULL << PINSENPUL1
+
+#define PINSENSPA1 35
+#define MASKPINSENSPA1 1ULL << PINSENSPA1
+
+#define PINSENSC1 34
+#define MASKPINSENSC1 1ULL << PINSENSC1
+
+#define PINSENSH2 39
+#define MASKPINSENSH2 1ULL << PINSENSH2
+
+#define PINSENSH1 36
+#define MASKPINSENSH1 1ULL << PINSENSH1
+
+
+//Definición de los pines de salida
+
+#define PINACTBOM1 23
+#define MASKPINACTBOM1 1ULL << PINACTBOM1
+
+#define PINACTEV2 19
+#define MASKPINACTEV2 1ULL << PINACTEV2
+
+#define PINACTEV1 18
+#define MASKPINACTEV1 1ULL << PINACTEV1
+
+static const char* TAG = "MyModule";
+
+//Variables globales
+
+char vectorTopics[10][30] = {{"topic0"}, {"topic1"}};
+
+//Datos propios
+
+typedef struct main
+{
+    int id;
+    int funcion;
+    int ReadWrite;
+    int dato;
+}packetSend_t;
+
+
+//Funciones propias
+
+void initWifi();
+void initMqttClient();
+
+//Funciones callback - Las que se ejecutan tras evento
+
+
+void cb_wifiEvent (void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
+void cb_ipEvent (void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
+void cb_mqttEvent (void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
+
+//Declaración de las funciones de las tareas
+//Tareas de los sensores
+void tareaSensorVolumen1( void * pvParameters );
+void tareaPulsador1( void * pvParameters );
+void tareaSensorPresion1( void * pvParameters );
+void tareaSensorCauldal1( void * pvParameters );
+void tareaSensorHumedad2( void * pvParameters );
+void tareaSensorHumedad1( void * pvParameters );
+
+//Tareas de los actuadores
+void tareaBomba1( void * pvParameters );
+void tareaElectrovalvula2( void * pvParameters );
+void tareaElectrovalvula1( void * pvParameters );
+
+//Tareas de las comunicaciones
+void tareaEnvioMQTT1 (void * pvParameters );
+
+
+//handles
+//Handles de las tareas
+TaskHandle_t h_tareaSensorVolumen1;
+TaskHandle_t h_tareaPulsador1;
+TaskHandle_t h_tareaSensorPresion1;
+TaskHandle_t h_tareaSensorCauldal1;
+TaskHandle_t h_tareaSensorHumedad2;
+TaskHandle_t h_tareaSensorHumedad1;
+TaskHandle_t h_tareaBomba1;
+TaskHandle_t h_tareaElectrovalvula2;
+TaskHandle_t h_tareaElectrovalvula1;
+TaskHandle_t h_tareaEnvioMQTT1;
+
+//Handles de las colas
+QueueHandle_t h_colaEnvioMQTT;
+QueueHandle_t h_colaBomba1;
+QueueHandle_t h_colaElectrovalvula1;
+QueueHandle_t h_colaElectrovalvula2;
+
+QueueHandle_t vectorHandlesColasActuadores [3] = {};
+
+//Handles de los semáforos
+SemaphoreHandle_t h_semaforoEnvioMqtt;
+
+//Handle Mqtt client
+
+esp_mqtt_client_handle_t h_mqttClient;
+
+
+void app_main(void)
+{
+    //Ejecutar funcion inicio conexión dato wifi
+    initWifi();
+    vTaskDelay(pdMS_TO_TICKS(3000));
+    initMqttClient();
+    vTaskDelay(pdMS_TO_TICKS(3000));
+    //Crear semáforo
+    h_semaforoEnvioMqtt = xSemaphoreCreateBinary();
+    //Crear colas
+    //Colas de los actuadores
+    h_colaBomba1 = xQueueCreate( 1, sizeof (int));
+    h_colaElectrovalvula1 = xQueueCreate( 1, sizeof (int));
+    h_colaElectrovalvula2 = xQueueCreate( 1, sizeof (int));
+    vectorHandlesColasActuadores[0] = h_colaBomba1;
+    vectorHandlesColasActuadores[1] = h_colaElectrovalvula1;
+    vectorHandlesColasActuadores[2] = h_colaElectrovalvula2;
+    //Colas de comunicación
+    h_colaEnvioMQTT = xQueueCreate( 1, sizeof (packetSend_t));
+    //Crear las tareas
+    xTaskCreate(tareaEnvioMQTT1, "tareaEnvioMqtt", SIZETAREAS, NULL, 1, &h_tareaEnvioMQTT1);
+    xTaskCreate(tareaBomba1, "tareaBomba1", SIZETAREAS, NULL, 1, &h_tareaBomba1);
+    xTaskCreate(tareaElectrovalvula1, "tareaElectrovalvula1", SIZETAREAS, NULL, 1, &h_tareaElectrovalvula1);
+    xTaskCreate(tareaElectrovalvula2, "tareaElectrovalvula2", SIZETAREAS, NULL, 1, &h_tareaElectrovalvula2);
+
+    //packetSend_t datoAEnviar;
+
+    //datoAEnviar.id = 3;
+    //datoAEnviar.dato = 8;
+    while(1)
+    {
+        //xSemaphoreTake(h_semaforoEnvioMqtt, portMAX_DELAY);
+        //xQueueSend(h_colaEnvioMQTT, &datoAEnviar, 0);
+        vTaskDelay(pdMS_TO_TICKS(20000));
+        //xQueueSend(h_colaBomba1, &i, 0);
+    }
+
+}
+
+
+void tareaSensorVolumen1( void * pvParameters )
+{
+    int dato;
+    // xQueueReceive(h_colaSensorVolumen1, )
+    while(1)
+    {
+        vTaskDelay(pdMS_TO_TICKS(20000));
+    }
+}
+void tareaPulsador1( void * pvParameters )
+{
+    while(1)
+    {
+        vTaskDelay(pdMS_TO_TICKS(20000));
+    }
+}
+void tareaSensorPresion1( void * pvParameters )
+{
+    while(1)
+    {
+        vTaskDelay(pdMS_TO_TICKS(20000));
+    }
+}
+void tareaSensorCauldal1( void * pvParameters )
+{
+    while(1)
+    {
+        vTaskDelay(pdMS_TO_TICKS(20000));
+    }
+}
+void tareaSensorHumedad2( void * pvParameters )
+{
+    while(1)
+    {
+        vTaskDelay(pdMS_TO_TICKS(20000));
+    }
+}
+void tareaSensorHumedad1( void * pvParameters )
+{
+    while(1)
+    {
+        vTaskDelay(pdMS_TO_TICKS(20000));
+    }
+}
+void tareaBomba1( void * pvParameters )
+{
+    int dato;
+
+    while(1)
+    {
+        int dato;
+        xQueueReceive(h_colaBomba1, &dato, portMAX_DELAY);
+        ESP_LOGI(TAG, "DATO TAREA BOMBA %d", dato);
+    }
+}
+void tareaElectrovalvula2( void * pvParameters )
+{
+    while(1)
+    {
+        vTaskDelay(pdMS_TO_TICKS(20000));
+    }
+}
+void tareaElectrovalvula1( void * pvParameters )
+{
+    while(1)
+    {
+        vTaskDelay(pdMS_TO_TICKS(20000));
+    }
+}
+void tareaEnvioMQTT1 (void * pvParameters )
+{
+    xSemaphoreGive(h_semaforoEnvioMqtt);
+    packetSend_t dataRecibido;
+    while(1)
+    {
+        xQueueReceive(h_colaEnvioMQTT, &dataRecibido, portMAX_DELAY);
+        ESP_LOGI(TAG, "id %d, dato %d", dataRecibido.id, dataRecibido.dato);
+        xSemaphoreGive(h_semaforoEnvioMqtt);
+
+    }
+}
+
+void initWifi()
+{
+    nvs_flash_init();    //Crear partición para pila TCP-IP
+    esp_netif_init();   //Iniciar la interface
+    esp_event_loop_create_default();    //Creamos gestor de evento del sistema
+    esp_netif_create_default_wifi_sta();    //Interface como station
+
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();    //Configuración BW, CH.... de la interface
+    esp_wifi_init(&cfg);
+
+    esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &cb_wifiEvent, NULL, NULL);
+    esp_event_handler_instance_register(IP_EVENT, ESP_EVENT_ANY_ID, &cb_ipEvent, NULL, NULL);
+
+    wifi_config_t wifi_config = {
+        .sta = {
+            .ssid = SSID,
+            .password = PASS,
+        }
+
+    };
+    esp_wifi_set_mode(WIFI_MODE_STA);
+    esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
+    esp_wifi_start();
+}
+
+void initMqttClient()
+{
+    const esp_mqtt_client_config_t mqtt_cfg = {
+    .broker.address.uri = "mqtt://10.0.2.252",
+    };
+    h_mqttClient = esp_mqtt_client_init(&mqtt_cfg);
+    esp_mqtt_client_register_event(h_mqttClient, ESP_EVENT_ANY_ID, cb_mqttEvent, NULL);
+    esp_mqtt_client_start(h_mqttClient);
+
+}
+
+void cb_wifiEvent (void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
+{
+    if (event_id == WIFI_EVENT_STA_START)
+    {
+        ESP_LOGI(TAG, "Wifi iniciada");
+        esp_wifi_connect();
+    }
+    else if(event_id == WIFI_EVENT_STA_CONNECTED)
+    {
+        ESP_LOGI(TAG, "Wifi conectada");
+    }
+}
+void cb_ipEvent (void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
+{
+    if (event_id == IP_EVENT_STA_GOT_IP)
+    {
+        ESP_LOGI(TAG, "Ip obtenida");
+    }
+}
+
+void cb_mqttEvent (void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
+{
+    if (event_id == MQTT_EVENT_CONNECTED)
+    {
+        ESP_LOGI(TAG, "Conectado al broker");
+    }
+}
