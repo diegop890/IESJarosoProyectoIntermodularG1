@@ -180,7 +180,8 @@ void app_main(void)
     xTaskCreate(tareaElectrovalvula1, "tareaElectrovalvula1", SIZETAREAS, NULL, 1, &h_tareaElectrovalvula1); 
     xTaskCreate(tareaElectrovalvula2, "tareaElectrovalvula2", SIZETAREAS, NULL, 1, &h_tareaElectrovalvula2); 
     xTaskCreate(tareaSensorHumedad1, "tareaSensorHumedad1", SIZETAREAS, NULL, 1, &h_tareaSensorHumedad1);
-    xTaskCreate(tareaSensorCauldal1, "tareaCauldal1", SIZETAREAS, NULL, 1, h_tareaSensorCauldal1);
+    xTaskCreate(tareaSensorCauldal1, "tareaCauldal1", SIZETAREAS, NULL, 1, &h_tareaSensorCauldal1);
+    xTaskCreate(tareaSensorPresion1, "tareaPresion1", SIZETAREAS, NULL, 1, &h_tareaSensorPresion1);
 
     //packetSend_t datoEnviar; 
  
@@ -214,11 +215,37 @@ void tareaPulsador1( void * pvParameters )
     } 
 } 
 void tareaSensorPresion1( void * pvParameters ) 
-{ 
+{
+    packetSend_t datoEnviar = {
+        .id = 12,
+        .funcion = 0,
+        .ReadWrite = 0,
+        .dato = 0
+    };
+
+    //Configuración Sensor Presión 1 gpio 35
+    gpio_config_t configSenPres1 = { 
+        .pin_bit_mask = MASKPINSENSPA1, 
+        .mode = GPIO_MODE_INPUT, 
+        .pull_up_en = GPIO_PULLUP_DISABLE, 
+        .pull_down_en = GPIO_INTR_DISABLE 
+    }; 
+    gpio_config(&configSenPres1);
+
+    adc_oneshot_chan_cfg_t configCad = {
+        .bitwidth = ADC_BITWIDTH_10,
+        .atten = ADC_ATTEN_DB_12,
+    };
+    adc_oneshot_config_channel(&h_cadUnit1, ADC_CHANNEL_7, &configCad);
+
     while(1) 
     { 
-        vTaskDelay(pdMS_TO_TICKS(20000)); 
-    } 
+        adc_oneshot_read(h_cadUnit1, ADC_CHANNEL_7, &(datoEnviar.dato));
+        xSemaphoreTake(h_semaforoEnvioMqtt, portMAX_DELAY);
+        ESP_LOGI(TAG, "dato leido sensor presion1 %d", datoEnviar.dato);
+        xQueueSend(h_colaEnvioMQTT, &datoEnviar, 0);
+        vTaskDelay(pdMS_TO_TICKS(10000));
+    }
 } 
 void tareaSensorCauldal1( void * pvParameters ) 
 { 
